@@ -1,0 +1,22 @@
+{
+    "name": "LaValorant_dev",
+    "dockerComposeFile": "../docker-compose.yml",
+    "service": "app",
+    "workspaceFolder": "/workspace",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-toolsai.jupyter",
+                "charliermarsh.ruff"
+            ],
+            "settings": {
+                "editor.defaultFormatter": "charliermarsh.ruff",
+                "editor.formatOnSave": true
+            }
+        }
+    },
+    "forwardPorts": [8888],
+    "remoteUser": "root",
+    "shutdownAction": "stopCompose"
+}

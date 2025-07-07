@@ -1,0 +1,11 @@
+services:
+  app:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    container_name: LaValorant_dev
+    volumes:
+      - ./workspace:/workspace
+      - ./requirements.txt:/workspace/requirements.txt
+    working_dir: /workspace
+    tty: true
+    command: ["tail", "-f", "/dev/null"]
+    
