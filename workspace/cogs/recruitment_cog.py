@@ -1,9 +1,13 @@
 # cogs/recruitment_cog.py
+
 from typing import List, Optional
 import discord
 from discord import app_commands
 from discord.ext import commands
+from functools import partial
 
+# 【↓修正点↓】Recruitmentモデルをインポート
+from db.recruitment_repository import Recruitment
 from services.recruitment_service import RecruitmentService
 from views.recruitment_modal import RecruitmentModal
 from views.recruitment_view import RecruitmentView
@@ -21,10 +25,6 @@ class RecruitmentCog(commands.Cog):
     def _build_recruitment_embed(
         self, recruitment: dict, participants: List[discord.User]
     ) -> discord.Embed:
-        """
-
-        募集情報からEmbedメッセージを生成するヘルパー関数
-        """
         participant_mentions = [p.mention for p in participants]
         remaining_count = recruitment["max_participants"] - len(participants)
 
@@ -53,7 +53,6 @@ class RecruitmentCog(commands.Cog):
             else "まだいません",
             inline=False,
         )
-        # 募集IDをフッターに埋め込むことで、ボタンが押された際にどの募集か特定できるようにする
         embed.set_footer(text=f"Recruitment ID | {recruitment['id']}")
         return embed
 
@@ -65,12 +64,8 @@ class RecruitmentCog(commands.Cog):
         deadline_str: str,
         other_members: List[discord.Member],
     ):
-        """
-        RecruitmentModalが送信された後の処理を行うコールバック関数
-        """
         await interaction.response.defer(ephemeral=True, thinking=True)
 
-        # 入力値のバリデーション
         try:
             needed_count = int(needed_count_str)
             if needed_count < 0:
@@ -81,7 +76,6 @@ class RecruitmentCog(commands.Cog):
             )
             return
 
-        # 1. Serviceを呼び出して募集を作成
         recruitment, message = await self.recruitment_service.create_recruitment(
             interaction=interaction,
             party_type=party_type,
@@ -96,8 +90,6 @@ class RecruitmentCog(commands.Cog):
             )
             return
 
-        # 2. 募集メッセージをチャンネルに送信
-        # TODO: .envなどから募集用チャンネルIDを取得する
         recruitment_channel = interaction.channel
 
         initial_participants = {interaction.user} | set(other_members)
@@ -111,7 +103,6 @@ class RecruitmentCog(commands.Cog):
 
         sent_message = await recruitment_channel.send(embed=embed, view=view)
 
-        # 3. DBの募集情報に、実際に送信したメッセージのIDを記録
         self.recruitment_service.recruitment_repo.update_recruitment(
             recruitment.id, {"message_id": str(sent_message.id)}
         )
@@ -126,9 +117,6 @@ class RecruitmentCog(commands.Cog):
         max_participants_str: str,
         deadline_str: str,
     ):
-        """
-        編集モーダルが送信された後の処理
-        """
         await interaction.response.defer(ephemeral=True)
 
         try:
@@ -141,7 +129,6 @@ class RecruitmentCog(commands.Cog):
             )
             return
 
-        # 1. Serviceを呼び出して編集処理を実行
         updates = {
             "party_type": party_type,
             "max_participants": max_participants,
@@ -157,7 +144,6 @@ class RecruitmentCog(commands.Cog):
             )
             return
 
-        # 2. 元の募集メッセージのEmbedを更新
         try:
             channel = await self.bot.fetch_channel(interaction.channel_id)
             original_message = await channel.fetch_message(int(recruitment.message_id))
@@ -193,23 +179,16 @@ class RecruitmentCog(commands.Cog):
     ):
         other_members = [m for m in [other_member_1, other_member_2] if m is not None]
 
-        # モーダルに渡すためのコールバックを部分適用で作成
-        from functools import partial
-
         callback = partial(self.on_modal_submit, other_members=other_members)
-
-        # モーダルをインスタンス化して表示
         modal = RecruitmentModal(on_submit_callback=callback)
         await interaction.response.send_modal(modal)
 
-    # TODO: /cancel, /editコマンドの実装
     @app_commands.command(
         name="cancel", description="自身が開始した募集をキャンセルします。"
     )
     async def cancel(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
 
-        # 1. Serviceを呼び出してキャンセル処理を実行
         recruitment, participant_ids, message = (
             self.recruitment_service.cancel_recruitment(str(interaction.user.id))
         )
@@ -218,13 +197,10 @@ class RecruitmentCog(commands.Cog):
             await interaction.followup.send(message, ephemeral=True)
             return
 
-        # 2. 元の募集メッセージを「キャンセル済」に更新
         try:
-            # メッセージIDから元のメッセージを取得
             channel = await self.bot.fetch_channel(interaction.channel_id)
             original_message = await channel.fetch_message(int(recruitment.message_id))
 
-            # 新しいEmbedを作成
             cancelled_embed = discord.Embed(
                 title="【募集キャンセル】",
                 description="この募集は募集主によってキャンセルされました。",
@@ -232,7 +208,6 @@ class RecruitmentCog(commands.Cog):
             )
             cancelled_embed.set_footer(text=f"Recruitment ID | {recruitment.id}")
 
-            # メッセージを更新し、ボタン(View)を削除
             await original_message.edit(embed=cancelled_embed, view=None)
 
         except discord.NotFound:
@@ -240,11 +215,9 @@ class RecruitmentCog(commands.Cog):
         except Exception as e:
             print(f"Error editing message for cancellation: {e}")
 
-        # 3. 参加者にDMで通知 (仕様書の要件)
         if participant_ids:
             notification_message = f"募集主 <@{recruitment.creator_id}> によって募集がキャンセルされました。"
             for user_id in participant_ids:
-                # 自分自身には送らない
                 if user_id == str(interaction.user.id):
                     continue
                 try:
@@ -259,7 +232,6 @@ class RecruitmentCog(commands.Cog):
         name="edit", description="自身が開始した募集内容を編集します。"
     )
     async def edit(self, interaction: discord.Interaction):
-        # 編集対象の募集を取得
         recruitment = self.recruitment_service.recruitment_repo.get_open_recruitment_by_creator_id(
             str(interaction.user.id)
         )
@@ -269,24 +241,20 @@ class RecruitmentCog(commands.Cog):
             )
             return
 
-        from functools import partial
-
         callback = partial(self.on_edit_modal_submit, recruitment=recruitment)
 
-        # RecruitmentModalを再利用するが、現在の値で初期化する
         modal = RecruitmentModal(on_submit_callback=callback)
         modal.title = "募集内容の編集"
         modal.party_type.default = recruitment.party_type
-        # 「残り人数」ではなく「募集定員」を編集するように変更
         modal.needed_count.label = "募集定員（合計人数）"
         modal.needed_count.default = str(recruitment.max_participants)
-        modal.deadline_str.default = recruitment.deadline.astimezone(JST).strftime(
-            "%H:%M"
-        )
+        modal.deadline_str.default = recruitment.deadline.astimezone(
+            self.recruitment_service.JST
+        ).strftime("%H:%M")
 
         await interaction.response.send_modal(modal)
 
 
 async def setup(bot: commands.Bot):
-    recruitment_service = bot.recruitment_service  # main.pyでインスタンス化
+    recruitment_service = bot.recruitment_service
     await bot.add_cog(RecruitmentCog(bot, recruitment_service))

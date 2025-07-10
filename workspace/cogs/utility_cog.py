@@ -1,3 +1,5 @@
+# cogs/utility_cog.py
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -5,26 +7,25 @@ from discord.ext import commands
 
 class UtilityCog(commands.Cog):
     """
-    Botのユーティリティ関連のコマンドを管理する
-    /helpなどが含まれる
+    Botのユーティリティ関連のコマンドを管理するCog。
+    /help などが含まれる。
     """
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.commands(
-        name="help", description="Botコマンドの一覧や使い方を表示する"
+    @app_commands.command(
+        name="help", description="Botのコマンド一覧や使い方を表示します。"
     )
     async def help_command(self, interaction: discord.Interaction):
         """
-        ユーザーにヘルプメッセージを送信する
+        ユーザーにヘルプメッセージを送信する。
         """
         embed = discord.Embed(
             title="👋 LaValorant Bot ヘルプ",
             description=f"「{self.bot.user.name}」は、VALORANTの募集を円滑に行うためのBotです。\n以下にコマンドの一覧と使い方を記載します。",
             color=discord.Color.blue(),
         )
-
         embed.add_field(
             name="🤝 `/joinus [other_member_n]`",
             value="参加者募集を開始します。ボイスチャンネルに接続した状態で実行すると、VC内のメンバーも自動で参加者に追加されます。",
@@ -48,20 +49,17 @@ class UtilityCog(commands.Cog):
         embed.add_field(
             name="❓ `/help`", value="このヘルプメッセージを表示します。", inline=False
         )
-
         embed.add_field(
             name="✅ 募集への参加・取消方法",
             value="募集メッセージに表示される「参加する」「参加を取り消す」ボタンを押してください。",
             inline=False,
         )
-
         embed.add_field(
             name="⚠️ `/rank`連携時の注意",
             value="`/rank`実行後に送られる認証URLは、セキュリティのため有効期限が設定されています。期限が切れた場合は、再度コマンドを実行してください。",
             inline=False,
         )
-
-        embed.set_footer(text="LaValorant Bot | v1.0.0")
+        embed.set_footer(text=f"LaValorant Bot | v1.0.0")
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 

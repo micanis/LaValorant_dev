@@ -1,25 +1,21 @@
 # web/server.py
+
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, FileResponse
-# from fastapi.staticfiles import StaticFiles
 
 from services.user_service import UserService
 
-# FastAPIアプリケーションのインスタンスを作成
 app = FastAPI()
 
 
 @app.on_event("startup")
 async def startup_event():
-    # main.pyから渡されたUserServiceインスタンスをここで受け取る想定
-    # このようにapp.stateに格納することで、リクエストハンドラ内で利用できる
-    app.state.user_service = None  # プレースホルダー
+    app.state.user_service = None
 
 
 @app.get("/oauth/callback/riot.txt", response_class=FileResponse)
 async def get_riot_verification_file():
-    """endpoint"""
-    return FileResponse("public/riot.txt", media_type="text/plain")
+    return FileResponse("static/riot.txt", media_type="text/plain")
 
 
 @app.get("/oauth/callback", response_class=HTMLResponse)
@@ -34,7 +30,7 @@ async def oauth_callback(request: Request, code: str, state: str):
             status_code=500,
         )
 
-    # UserServiceに実際の処理を委譲
+    # 【修正点】process_oauth_callbackの引数からdiscord_idを削除
     success, message = await user_service.process_oauth_callback(code, state)
 
     if success:

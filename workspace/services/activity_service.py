@@ -1,4 +1,5 @@
 # services/activity_service.py
+
 from datetime import datetime, timedelta
 from typing import Set
 
@@ -56,25 +57,28 @@ class ActivityService:
             )
             member_joins.append({"member": member, "count": join_count})
 
-        # 参加回数で降順ソート
         member_joins.sort(key=lambda x: x["count"], reverse=True)
 
-        # 上位5名を新レギュラーメンバーとする
         new_regulars: Set[discord.Member] = {
             item["member"] for item in member_joins[:5] if item["count"] > 0
         }
-        current_regulars: Set[discord.Member] = set(role.members)
 
-        # ロールを付与すべきメンバーと剥奪すべきメンバーを差分で計算
-        members_to_add = new_regulars - current_regulars
-        members_to_remove = current_regulars - new_regulars
+        for member in guild.members:
+            if member.bot:
+                continue
 
-        for member in members_to_add:
-            await member.add_roles(role, reason="Top 5 active member")
-            print(f"Added '{REGULAR_MEMBER_ROLE_NAME}' to {member.name}")
-        for member in members_to_remove:
-            await member.remove_roles(role, reason="No longer a top 5 active member")
-            print(f"Removed '{REGULAR_MEMBER_ROLE_NAME}' from {member.name}")
+            # 【修正点】メンバーが持つロールのリストに、対象ロールが含まれるかチェックする
+            has_role = role in member.roles
+            should_have_role = member in new_regulars
+
+            if should_have_role and not has_role:
+                await member.add_roles(role, reason="Top 5 active member")
+                print(f"Added '{REGULAR_MEMBER_ROLE_NAME}' to {member.name}")
+            elif not should_have_role and has_role:
+                await member.remove_roles(
+                    role, reason="No longer a top 5 active member"
+                )
+                print(f"Removed '{REGULAR_MEMBER_ROLE_NAME}' from {member.name}")
 
     async def _update_ghost_members_role(
         self, guild: discord.Guild, start_date: datetime, end_date: datetime
@@ -96,7 +100,6 @@ class ActivityService:
             print("No recruitments in the period. Skipping ghost member update.")
             return
 
-        new_ghosts: Set[discord.Member] = set()
         for member in guild.members:
             if member.bot:
                 continue
@@ -104,25 +107,22 @@ class ActivityService:
             join_count = self.activity_log_repo.get_user_join_count_in_period(
                 str(member.id), start_date, end_date
             )
-            # 不参加率 = (総募集数 - 参加数) / 総募集数
             non_participation_rate = (
-                total_recruitments - join_count
-            ) / total_recruitments
+                (total_recruitments - join_count) / total_recruitments
+                if total_recruitments > 0
+                else 0
+            )
 
-            if non_participation_rate > 0.9:
-                new_ghosts.add(member)
+            # 【修正点】こちらも同様に、メンバーのロールリストで直接判断
+            has_role = role in member.roles
+            should_have_role = non_participation_rate > 0.9
 
-        current_ghosts: Set[discord.Member] = set(role.members)
-
-        members_to_add = new_ghosts - current_ghosts
-        members_to_remove = current_ghosts - new_ghosts
-
-        for member in members_to_add:
-            await member.add_roles(role, reason="Non-participation rate > 90%")
-            print(f"Added '{GHOST_MEMBER_ROLE_NAME}' to {member.name}")
-        for member in members_to_remove:
-            await member.remove_roles(role, reason="Participation rate increased")
-            print(f"Removed '{GHOST_MEMBER_ROLE_NAME}' from {member.name}")
+            if should_have_role and not has_role:
+                await member.add_roles(role, reason="Non-participation rate > 90%")
+                print(f"Added '{GHOST_MEMBER_ROLE_NAME}' to {member.name}")
+            elif not should_have_role and has_role:
+                await member.remove_roles(role, reason="Participation rate increased")
+                print(f"Removed '{GHOST_MEMBER_ROLE_NAME}' from {member.name}")
 
     async def update_activity_roles(self, guild: discord.Guild):
         """

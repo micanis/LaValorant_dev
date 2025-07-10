@@ -1,4 +1,5 @@
-# main.py (更新後の全文)
+# main.py (修正後の全文)
+
 import asyncio
 import os
 import aiohttp
@@ -9,15 +10,14 @@ from discord.ext import commands
 from config import settings
 from db.database import get_db_client
 from db.user_repository import UserRepository
-from api_clients.riot_api_client import RiotApiClient
-from services.user_service import UserService
-from web.server import app as fastapi_app
-
 from db.recruitment_repository import RecruitmentRepository
 from db.participant_repository import ParticipantRepository
 from db.activity_log_repository import ActivityLogRepository
+from api_clients.riot_api_client import RiotApiClient
+from services.user_service import UserService
 from services.recruitment_service import RecruitmentService
 from views.recruitment_view import RecruitmentView
+from web.server import app as fastapi_app
 
 
 class LaValorantBot(commands.Bot):
@@ -33,14 +33,14 @@ class LaValorantBot(commands.Bot):
         intents.members = True
         super().__init__(command_prefix="!", intents=intents)
 
-        # 依存関係をここで解決・インスタンス化
+        # 依存関係のインスタンス化 (同期的なもの)
         self.db_client = get_db_client()
         self.user_repo = UserRepository(self.db_client, settings.ENCRYPTION_KEY)
         self.recruitment_repo = RecruitmentRepository(self.db_client)
         self.participant_repo = ParticipantRepository(self.db_client)
         self.activity_log_repo = ActivityLogRepository(self.db_client)
 
-        # aiohttp.ClientSessionは非同期コンテキストで作成する必要がある
+        # プレースホルダー
         self.aiohttp_session = None
         self.riot_api_client = None
         self.user_service = None
@@ -49,7 +49,7 @@ class LaValorantBot(commands.Bot):
     async def setup_hook(self):
         print("Initializing components...")
 
-        # 非同期で初期化が必要なコンポーネントをここでセットアップ
+        # 依存関係のインスタンス化 (非同期的なもの)
         self.aiohttp_session = aiohttp.ClientSession()
         self.riot_api_client = RiotApiClient(
             self.aiohttp_session,
@@ -59,7 +59,6 @@ class LaValorantBot(commands.Bot):
             settings.RIOT_REDIRECT_URI,
         )
         self.user_service = UserService(self.user_repo, self.riot_api_client)
-
         self.recruitment_service = RecruitmentService(
             self.recruitment_repo, self.participant_repo, self.activity_log_repo
         )
@@ -67,19 +66,24 @@ class LaValorantBot(commands.Bot):
         # FastAPIにUserServiceのインスタンスを渡す
         fastapi_app.state.user_service = self.user_service
 
+        # 永続Viewの登録
         self.add_view(RecruitmentView(self.recruitment_service))
 
         print("Loading cogs...")
         for filename in os.listdir("./cogs"):
-            if filename.endswith(".py"):
+            if filename.endswith(".py") and not filename.startswith("__"):
                 cog_name = filename[:-3]
                 try:
+                    # 【修正点】問題の2行を削除。
+                    # Serviceは既にself(Botインスタンス)にアタッチされているため、
+                    # Cog側はsetup(bot)のbot引数から bot.user_service のようにアクセスできる。
                     await self.load_extension(f"cogs.{cog_name}")
                     print(f"✅ Loaded cog: {cog_name}")
                 except Exception as e:
                     print(f"❌ Failed to load cog: {cog_name}")
                     print(f"   Reason: {e}")
 
+        # コマンドをDiscordサーバーに同期
         await self.tree.sync()
 
     async def on_ready(self):
@@ -90,7 +94,6 @@ class LaValorantBot(commands.Bot):
         print("-" * 30)
 
     async def close(self):
-        # クリーンアップ処理
         await super().close()
         if self.aiohttp_session:
             await self.aiohttp_session.close()
@@ -99,7 +102,6 @@ class LaValorantBot(commands.Bot):
 async def main():
     bot = LaValorantBot()
 
-    # Uvicorn(Webサーバー)の設定
     uvicorn_config = uvicorn.Config(
         fastapi_app,
         host=settings.WEB_SERVER_HOST,
@@ -108,7 +110,6 @@ async def main():
     )
     server = uvicorn.Server(uvicorn_config)
 
-    # Botの起動とWebサーバーの起動を並行して実行
     try:
         await asyncio.gather(bot.start(settings.DISCORD_BOT_TOKEN), server.serve())
     except discord.errors.LoginFailure:
@@ -121,7 +122,6 @@ async def main():
 
 
 if __name__ == "__main__":
-    # 必要なライブラリのインストールを確認
     try:
         import fastapi, uvicorn, aiohttp, cryptography
     except ImportError:

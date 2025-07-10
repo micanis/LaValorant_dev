@@ -1,8 +1,10 @@
+# db/user_repository.py (修正後の全文)
+
 from datetime import datetime
 from typing import List, Optional
 
 from cryptography.fernet import Fernet
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict  # <- ConfigDictをインポート
 from supabase import Client
 
 
@@ -11,20 +13,20 @@ class User(BaseModel):
     usersテーブルのデータを表現するPydanticモデル
     """
 
+    # 【修正点】Pydantic V2推奨のConfigDictを使用
+    model_config = ConfigDict(from_attributes=True)
+
     discord_id: str
     riot_puuid: Optional[str] = None
     riot_access_token: Optional[str] = None
     riot_refresh_token: Optional[str] = None
     created_at: datetime
-    updated_ad: datetime
-
-    class Config:
-        orm_mode = True
+    updated_at: datetime
 
 
 class UserRepository:
     """
-    usersテーブルへのデータアクセスを責務にもつクラス
+    usersテーブルへのデータアクセスを責務に持つクラス
     """
 
     def __init__(self, db_client: Client, encryption_key: bytes):
@@ -72,6 +74,32 @@ class UserRepository:
             user_data = response.data[0]
             user_data["riot_access_token"] = access_token
             user_data["riot_refresh_token"] = refresh_token
+            return User.model_validate(user_data)
+        return None
+
+    def get_user_by_discord_id(self, discord_id: str) -> Optional[User]:
+        """
+        Discord IDからユーザー情報を取得する
+        トークンは復号化して返す
+        """
+        response = (
+            self.db.table("users")
+            .select("*")
+            .eq("discord_id", discord_id)
+            .limit(1)
+            .execute()
+        )
+
+        if response.data:
+            user_data = response.data[0]
+            if user_data.get("riot_access_token"):
+                user_data["riot_access_token"] = self._decrypt(
+                    user_data["riot_access_token"]
+                )
+            if user_data.get("riot_refresh_token"):
+                user_data["riot_refresh_token"] = self._decrypt(
+                    user_data["riot_refresh_token"]
+                )
             return User.model_validate(user_data)
         return None
 
